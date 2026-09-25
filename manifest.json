@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Fila de Atendimento DecorColors",
+  "version": "0.2.0",
+  "description": "Mostra, dentro do Bot Conversa, quem precisa de resposta: não lidas, sem resposta, cobrar e só robô. Só leitura.",
+  "content_scripts": [
+    {
+      "matches": ["https://app.botconversa.com.br/*"],
+      "js": ["config.js", "regras.js", "content.js"],
+      "css": ["painel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "host_permissions": [
+    "https://chats-service.botconversa.com.br/*",
+    "https://backend.botconversa.com.br/*"
+  ]
+}
