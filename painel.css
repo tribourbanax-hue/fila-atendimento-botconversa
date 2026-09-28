@@ -39,6 +39,8 @@
 .fad-acoes { margin-top: 6px; display: flex; gap: 6px; }
 .fad-painel .fad-encerrar { border-color: #16a34a; color: #15803d; }
 .fad-encerrados { border-left-color: #16a34a; opacity: .85; }
+.fad-encerrada { border-left-color: #16a34a; }
+.fad-atendente { color: #6b7280; font-size: 12px; }
 .fad-vazio { color: #6b7280; padding: 6px 10px; margin: 0; }
 .fad-erro { color: #991b1b; padding: 12px 0; }
 .fad-diag { background: #111827; color: #d1fae5; padding: 8px; border-radius: 6px; font-size: 11px; white-space: pre-wrap; }

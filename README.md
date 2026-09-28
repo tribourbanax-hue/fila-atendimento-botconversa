@@ -1,16 +1,17 @@
 # Fila de Atendimento para Bot Conversa
 
 Extensão do Chrome que mostra, dentro do [Bot Conversa](https://botconversa.com.br),
-quem precisa de resposta, separado em 4 grupos:
+quem precisa de resposta, separado em grupos:
 
 | Grupo | Quando |
 |---|---|
-| 🔴 Não lidas / esperando a loja | última mensagem é do cliente e ninguém leu |
-| 🟠 Perguntaram e ficaram sem resposta | última mensagem é do cliente, já lida, sem resposta |
-| 🟡 Pediram um tempo — cobrar | cliente disse "vou ver", "te aviso", "semana que vem"... |
+| 🔴 Não lidas / esperando a loja | última mensagem é do cliente (ou o robô repassou pra um atendente) e ninguém leu |
+| 🟠 Perguntaram e ficaram sem resposta | igual, mas já lida — inclui as "repassadas pelo robô" |
+| 🟡 Pediram um tempo — cobrar | cliente disse "vou ver", "te aviso"... Mostra a partir de quando cobrar (48h depois) |
 | ⚪ Só falaram com o robô | última mensagem foi de um fluxo automático |
+| ✓ Encerradas com o cliente por último | a equipe encerrou no Bot Conversa, mas quem falou por último foi o cliente — conferir se foi engano |
 
-Cada cliente aparece com nome, número, o que mandou, há quanto tempo, o produto
+Cada cliente aparece com nome, número, atendente, o que mandou, há quanto tempo, o produto
 deduzido da mensagem e quanto falta da janela de 24h do WhatsApp.
 
 **Só leitura.** Usa a mesma lista de conversas que a página do Bot Conversa já
@@ -27,7 +28,7 @@ como lida, não envia mensagem, e o login não sai do navegador.
    **📋 Fila** no canto inferior esquerdo, com o número de urgentes.
 
 ## Usar
-- **📋 Fila** abre o painel. Escolha quantos dias olhar (padrão 3). Atualiza sozinho
+- **📋 Fila** abre o painel. Escolha quantos dias olhar (padrão 7). Atualiza sozinho
   a cada 5 minutos.
 - **✓ encerrado** tira da fila quem encerrou a conversa, sem mandar mensagem (evita
   o ciclo "obrigado" ↔ "por nada"). Fica guardado só no seu navegador, e o cliente
@@ -38,7 +39,10 @@ como lida, não envia mensagem, e o login não sai do navegador.
 ## Regras
 Ficam em `regras.js` (funções puras). Fora da fila: quem só agradeceu/encerrou
 ("Obrigadaa", "perfeito então", "Maravilha" — um "Bom dia" sozinho continua na
-fila), conversas em que a loja já respondeu, e os números/nomes do `config.js`.
+fila; "fechado" e "combinado" também ficam, porque na venda querem dizer "topei"),
+conversas em que a loja já respondeu, e os números/nomes do `config.js`.
+Aviso do sistema (`message_type = system`, ex. "robô passou pro Jefferson") **não**
+conta como resposta da loja.
 
 Testar as regras: `node teste.js`
 

@@ -13,6 +13,7 @@
     { id: 'laranja', titulo: '🟠 Perguntaram e ficaram sem resposta' },
     { id: 'amarelo', titulo: '🟡 Pediram um tempo — cobrar' },
     { id: 'branco', titulo: '⚪ Só falaram com o robô' },
+    { id: 'encerrada', titulo: '✓ Encerradas com o cliente por último — conferir' },
   ];
 
   // Conversas marcadas como "encerrado" ficam guardadas só neste navegador.
@@ -77,14 +78,22 @@
 
   function normalizar(item) {
     const doConta = item.is_from_account;
+    const tipo = item.message_type ?? '';
+    const sistema = tipo === 'system' || item.system_message_data?.code === 'chat_assigned';
     return {
       id: item.subscriber_id ?? item.subscriber?.id ?? item.id,
       nome: item.subscriber_full_name ?? item.full_name ?? item.name ?? '(sem nome)',
       telefone: item.subscriber_phone ?? item.phone ?? null,
       naoLidas: Number(item.count_of_unread_messages ?? item.unread_count ?? 0),
-      doCliente: doConta === false || doConta === 'false',
+      // null = o Bot Conversa não mandou o campo (fica na fila, com aviso)
+      doCliente: doConta == null ? null : (doConta === false || doConta === 'false'),
+      sistema,
+      repassadaPara: item.system_message_data?.code === 'chat_assigned' ? (item.system_message_data?.new_assigned_to_name || '') : null,
+      encerrada: item.subscriber_is_case_opened === false,
+      atendente: item.manager_full_name || '',
+      janelaAte: lerDataUTC(item.send_until_datetime),
       mensagem: typeof item.last_message === 'string' ? item.last_message : (item.last_message?.text ?? ''),
-      tipo: item.message_type ?? '',
+      tipo,
       data: lerDataUTC(item.last_message_datetime ?? item.updated_at),
     };
   }
@@ -171,14 +180,22 @@
     const produto = deduzirProduto(c.mensagem);
     const janela = horasRestantesJanela(c);
     const tel = formatarTelefone(c.telefone);
+    const cobrar = classificar(c) === 'amarelo' ? cobrarAPartirDe(c) : null;
+    const quando = (d) => d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return el('div', { class: 'fad-cartao' },
       el('div', { class: 'fad-linha1' },
         el('strong', {}, c.nome),
         el('span', { class: 'fad-quando' }, tempoAtras(c.data)),
       ),
       el('div', { class: 'fad-tel' }, tel || 'telefone não encontrado', c.naoLidas ? el('span', { class: 'fad-nl' }, ` · ${c.naoLidas} não lida(s)`) : null),
-      el('div', { class: 'fad-msg' }, c.mensagem ? `“${c.mensagem.slice(0, 220)}”` : `(${c.tipo || 'mídia'})`),
+      el('div', { class: 'fad-atendente' }, c.atendente ? `atendente: ${c.atendente}` : 'sem atendente'),
+      el('div', { class: 'fad-msg' }, c.sistema
+        ? `(repassada pelo robô${c.repassadaPara ? ` para ${c.repassadaPara}` : ''} — o cliente espera um humano)`
+        : c.mensagem ? `“${c.mensagem.slice(0, 220)}”` : `(${c.tipo || 'mídia'})`),
       el('div', { class: 'fad-tags' },
+        c.sistema ? el('span', { class: 'fad-tag fad-alerta' }, 'repassada pelo robô') : null,
+        c.doCliente == null ? el('span', { class: 'fad-tag fad-alerta' }, 'sem campo "quem falou por último" — conferir') : null,
+        cobrar ? el('span', { class: 'fad-tag' }, cobrar <= new Date() ? 'já pode cobrar' : `cobrar a partir de ${quando(cobrar)}`) : null,
         produto ? el('span', { class: 'fad-tag' }, `produto: ${produto}`) : null,
         janela != null ? el('span', { class: `fad-tag ${janela < 3 ? 'fad-alerta' : ''}` }, janela > 0 ? `janela 24h: faltam ${Math.floor(janela)}h` : 'fora da janela 24h — só modelo') : null,
       ),
@@ -206,6 +223,7 @@
     Object.values(grupos).forEach((l) => l.sort((a, b) => (a.data || 0) - (b.data || 0)));
 
     const urgentes = grupos.vermelho.length + grupos.laranja.length;
+    const semCampo = conversas.filter((c) => c.doCliente == null).length;
     botao.querySelector('.fad-badge').textContent = urgentes ? String(urgentes) : '';
 
     painel.replaceChildren(
@@ -220,14 +238,15 @@
           el('button', { onclick: () => alternarPainel() }, '✕'),
         ),
         el('p', { class: 'fad-aviso' }, 'Só leitura. Abrir a conversa marca como lida — abra só quando for responder.'),
+        semCampo ? el('p', { class: 'fad-erro' }, `Atenção: ${semCampo} conversa(s) vieram sem o campo "quem falou por último". O Bot Conversa pode ter mudado — clique em diagnóstico e mande pro Claude.`) : null,
       ),
-      ...GRUPOS.map((g) => el('details', { class: `fad-grupo fad-${g.id}`, ...(g.id !== 'branco' ? { open: '' } : {}) },
+      ...GRUPOS.map((g) => el('details', { class: `fad-grupo fad-${g.id}`, ...(g.id !== 'branco' && g.id !== 'encerrada' ? { open: '' } : {}) },
         el('summary', {}, `${g.titulo} (${grupos[g.id].length})`),
         grupos[g.id].length ? grupos[g.id].map((c) => cartao(c)) : el('p', { class: 'fad-vazio' }, 'ninguém aqui'),
       )),
       listaEncerrados.length
         ? el('details', { class: 'fad-grupo fad-encerrados' },
-          el('summary', {}, `✓ Encerrados (${listaEncerrados.length})`),
+          el('summary', {}, `✓ Marcados como encerrado neste navegador (${listaEncerrados.length})`),
           listaEncerrados.map((c) => cartao(c, true)))
         : null,
     );
@@ -261,6 +280,7 @@
       topo: Array.isArray(ultimoBruto) ? `lista(${ultimoBruto.length})` : tipos(ultimoBruto),
       campos_de_uma_conversa: tipos(item),
       exemplo_data: item?.last_message_datetime ?? null,
+      tipos_de_mensagem: [...new Set(extrairLista(ultimoBruto).map((i) => i.message_type))],
     }, null, 2);
     navigator.clipboard.writeText(texto);
     painel.prepend(el('pre', { class: 'fad-diag' }, 'Copiado (cole no chat do Claude):\n' + texto));

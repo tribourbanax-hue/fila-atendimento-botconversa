@@ -8,7 +8,10 @@ const CONFIG_LOJA = (typeof CONFIG !== 'undefined' && CONFIG)
 
 const REGRAS = {
   BOT_ID: CONFIG_LOJA.BOT_ID,
-  DIAS_PADRAO: 3,
+  DIAS_PADRAO: 7, // com 3, quem espera há mais tempo some da lista
+
+  // Cliente que pediu um tempo só vira cobrança depois disso.
+  HORAS_PARA_COBRAR: 48,
 
   // Números que nunca entram na fila (robôs de empresa). Só dígitos, sem 55.
   TELEFONES_IGNORADOS: CONFIG_LOJA.TELEFONES_IGNORADOS || [],
@@ -16,11 +19,12 @@ const REGRAS = {
   // Nomes que nunca entram na fila (outras unidades, fornecedores, internos).
   NOMES_IGNORADOS: CONFIG_LOJA.NOMES_IGNORADOS || [],
 
+  // "Fechado" e "combinado" NÃO entram: na venda querem dizer "topei".
   // Palavras de quem só agradece / encerra. Se a mensagem inteira for feita só
   // delas (mais emoji e pontuação), não precisa de retorno.
   // Precisa ter pelo menos uma palavra de FECHO; as de ENCHIMENTO só acompanham
   // (assim um "Bom dia" sozinho de cliente novo continua na fila).
-  PALAVRAS_FECHO: /^(ok+|okay|blz|beleza|obrigad[ao]+s?|obg|obd|obrig|brigad[ao]+|grat[ao]|gratid[aã]o|valeu+|vlw|show|top|perfeito|maravilha|[oó]timo|[oó]tima|legal|certo|certinho|combinado|fechado|entendi|entendido|tranquilo|am[eé]m)$/i,
+  PALAVRAS_FECHO: /^(ok+|okay|blz|beleza|obrigad[ao]+s?|obg|obd|obrig|brigad[ao]+|grat[ao]|gratid[aã]o|valeu+|vlw|show|top|perfeito|maravilha|[oó]timo|[oó]tima|legal|certo|certinho|entendi|entendido|tranquilo|am[eé]m)$/i,
   PALAVRAS_ENCHIMENTO: /^(t[aá]|bom|boa|dia|tarde|noite|ah|a|h[aá]|sim|ent[aã]o|muito|mt|mto|pra|voc[eê]|vc|tbm|tamb[eé]m|igualmente|deus|aben[cç]oe|e|o|te|de|nada|por|tudo|isso)$/i,
 
   // Cliente pediu um tempo: merece cobrança depois.
@@ -86,31 +90,51 @@ function deveIgnorar(conversa) {
 }
 
 // Recebe uma conversa já normalizada:
-// { nome, telefone, naoLidas, doCliente (última msg é do cliente), mensagem, data }
-// Devolve 'vermelho' | 'laranja' | 'amarelo' | 'branco' | null (fora da fila).
+// { nome, telefone, naoLidas, doCliente (true/false/null = campo não veio),
+//   sistema (última msg é aviso do sistema, ex. robô passou pro atendente),
+//   encerrada (equipe encerrou no Bot Conversa), mensagem, data }
+// Devolve 'vermelho' | 'laranja' | 'amarelo' | 'branco' | 'encerrada' | null (fora da fila).
 function classificar(c) {
   if (deveIgnorar(c)) return null;
   const msg = c.mensagem || '';
+  let grupo = null;
 
-  if (c.doCliente) {
-    if (soEncerramento(msg)) return null;
-    if (REGRAS.PEDIU_TEMPO.test(msg)) return 'amarelo';
-    if (c.naoLidas > 0) return 'vermelho';
-    return 'laranja';
+  if (c.sistema) {
+    // Aviso do sistema NÃO é resposta da loja: o cliente espera um humano.
+    grupo = c.naoLidas > 0 ? 'vermelho' : 'laranja';
+  } else if (c.doCliente === true || c.doCliente == null) {
+    // doCliente == null: o Bot Conversa não mandou o campo. Fica na lista (com aviso).
+    if (c.doCliente === true && soEncerramento(msg)) return null;
+    if (c.naoLidas > 0) grupo = 'vermelho'; // ninguém viu ainda, mesmo que tenha dito "vou pensar"
+    else if (REGRAS.PEDIU_TEMPO.test(msg)) grupo = 'amarelo';
+    else grupo = 'laranja';
+  } else {
+    // Última mensagem foi da loja/robô.
+    if (c.encerrada) return null;
+    return REGRAS.MENSAGEM_ROBO.test(msg) ? 'branco' : null;
   }
 
-  // Última mensagem foi da loja/robô.
-  if (REGRAS.MENSAGEM_ROBO.test(msg)) return 'branco';
-  return null; // a loja já respondeu, a bola está com o cliente
+  return c.encerrada ? 'encerrada' : grupo;
 }
 
-// Janela de 24h do WhatsApp, contada da última mensagem do cliente.
+// A partir de quando dá pra cobrar quem pediu um tempo.
+function cobrarAPartirDe(c) {
+  if (!c.data) return null;
+  return new Date(c.data.getTime() + REGRAS.HORAS_PARA_COBRAR * 36e5);
+}
+
+// Janela de 24h do WhatsApp. Usa o prazo que o Bot Conversa já manda
+// (send_until_datetime); se não vier, conta da última mensagem do cliente.
 function horasRestantesJanela(c, agora = new Date()) {
-  if (!c.doCliente || !c.data) return null;
-  const restante = 24 - (agora - c.data) / 36e5;
+  let fim = c.janelaAte;
+  if (!fim) {
+    if (c.doCliente !== true || !c.data) return null;
+    fim = new Date(c.data.getTime() + 24 * 36e5);
+  }
+  const restante = (fim - agora) / 36e5;
   return restante > 0 ? restante : 0;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { REGRAS, soDigitos, formatarTelefone, lerDataUTC, deduzirProduto, soEncerramento, deveIgnorar, classificar, horasRestantesJanela };
+  module.exports = { REGRAS, soDigitos, formatarTelefone, lerDataUTC, deduzirProduto, soEncerramento, deveIgnorar, classificar, cobrarAPartirDe, horasRestantesJanela };
 }
