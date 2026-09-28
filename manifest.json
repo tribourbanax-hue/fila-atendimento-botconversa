@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Fila de Atendimento DecorColors",
   "version": "0.3.0",
-  "description": "Mostra, dentro do Bot Conversa, quem precisa de resposta: não lidas, sem resposta (inclui repassadas pelo robô), cobrar, só robô e encerradas por engano. Só leitura.",
+  "description": "Mostra no Bot Conversa quem precisa de resposta: não lidas, sem resposta, repassadas pelo robô, cobrar e encerradas. Só leitura.",
   "content_scripts": [
     {
       "matches": ["https://app.botconversa.com.br/*"],
